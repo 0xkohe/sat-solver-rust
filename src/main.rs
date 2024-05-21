@@ -168,11 +168,12 @@ fn main() -> std::result::Result<(), std::io::Error>{
     
     let r = match search(&mut x, &cnf) {
         Some(r) => {
-            println!("SATISFIABLE");
+            println!("s SATISFIABLE");
+            print!("v ");
             r
         } ,
         None => {
-            println!("UNSATISFIABLE");
+            println!("s UNSATISFIABLE");
             return Ok(())} ,
     };
     for i in 0..r.len()  {
@@ -182,6 +183,7 @@ fn main() -> std::result::Result<(), std::io::Error>{
             print!("-{} ", i+1);
         }
     }
+    print!("{}", 0);
 
     Ok(())
 }
