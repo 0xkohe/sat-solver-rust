@@ -92,7 +92,7 @@ fn search<'a>(x: &'a mut Vec<VarState>, cnf: &Vec<[Vec<usize>; 2]>) -> Option<&'
     search(x, cnf)
 }
 
-fn read_file(path: &str) -> std::result::Result<(Vec<[Vec<usize>; 2]>,usize), std::io::Error> {
+fn read_file(path: &str) -> std::result::Result<(Vec<[Vec<usize>; 2]>, usize), std::io::Error> {
     use std::io::BufReader;
     let f = File::open(&path)?;
     let reader = BufReader::new(f);
@@ -122,65 +122,34 @@ fn read_file(path: &str) -> std::result::Result<(Vec<[Vec<usize>; 2]>,usize), st
     Ok((cnf, n_v))
 }
 
-fn main() -> std::result::Result<(), std::io::Error>{
-    /*
-    let cnf = vec![
-        // [true, not]
-        [vec![], vec![2, 3]],
-        [vec![3], vec![0, 2]],
-        [vec![2, 3], vec![]],
-        [vec![2], vec![3]],
-        [vec![0, 1], vec![2]],
-    ];
-    let mut x = vec![
-        VarState::None,
-        VarState::None,
-        VarState::None,
-        VarState::None,
-    ];
-    let mut _x2 = vec![
-        VarState::True,
-        VarState::None,
-        VarState::None,
-        VarState::None,
-    ];
-    let mut _x3 = vec![
-        VarState::False,
-        VarState::False,
-        VarState::True,
-        VarState::None,
-    ];
-    println!("{:?}", search(&mut x, &cnf));
-    //println!("{:?}", read_file("sudoku.cnf"));
-    */
-
+fn main() -> std::result::Result<(), std::io::Error> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <cnf file>", args[0]);
-        std::process::exit(1);
+        std::process::exit(2);
     }
 
     let path = &args[1];
     let f_i = read_file(path)?;
     let cnf = f_i.0;
     let mut x = vec![VarState::None; f_i.1];
-    //println!("{:?}", search(&mut x, &cnf));
-    
+
     let r = match search(&mut x, &cnf) {
         Some(r) => {
             println!("s SATISFIABLE");
             print!("v ");
             r
-        } ,
+        }
         None => {
             println!("s UNSATISFIABLE");
-            return Ok(())} ,
+            return Ok(());
+        }
     };
-    for i in 0..r.len()  {
+    for i in 0..r.len() {
         if r[i] == VarState::True {
-            print!("{} ", i+1);
+            print!("{} ", i + 1);
         } else {
-            print!("-{} ", i+1);
+            print!("-{} ", i + 1);
         }
     }
     print!("{}", 0);
