@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::BufRead;
 use std::vec;
@@ -9,23 +10,190 @@ enum VarState {
     None,
 }
 
-fn propagete(x: &mut Vec<VarState>, cnf: &Vec<[Vec<usize>; 2]>) -> bool {
+struct Node {
+    variable: usize,
+    value: bool,
+    decision_level: usize,
+    antecedent: Option<Clause>,
+}
+
+#[derive(Clone, Debug)]
+struct Clause {
+    literals: Vec<Literal>,
+    //watch: [usize; 2],
+}
+
+#[derive(Clone, Debug)]
+struct Literal {
+    variable: usize,
+    nageted: bool,
+}
+
+use std::collections::HashMap;
+use std::collections::HashSet;
+struct ImplicationGraph {
+    nodes: HashMap<usize, Node>,
+    desitions: Vec<usize>,
+}
+
+impl ImplicationGraph {
+    fn new() -> Self {
+        ImplicationGraph {
+            nodes: HashMap::new(),
+            desitions: vec![],
+        }
+    }
+
+    fn add_node(
+        &mut self,
+        variable: usize,
+        value: bool,
+        decision_level: usize,
+        antecedent: Option<Clause>,
+    ) {
+        self.nodes.insert(
+            variable,
+            Node {
+                variable,
+                value,
+                decision_level,
+                antecedent,
+            },
+        );
+        if decision_level == self.desitions.len() {
+            self.desitions.push(variable);
+        }
+    }
+
+    fn node(&self, variable: usize) -> Option<&Node> {
+        self.nodes.get(&variable)
+    }
+
+    // TODO x should be propaty of the struct
+    fn backtrack(&mut self, decision_level: usize, x: &mut Vec<VarState>) {
+        let mut to_remove = vec![];
+        for (variable, node) in &self.nodes {
+            if node.decision_level >= decision_level {
+                to_remove.push(*variable);
+                x[*variable] = VarState::None;
+            }
+        }
+        for variable in to_remove {
+            self.nodes.remove(&variable);
+        }
+        self.desitions.truncate(decision_level);
+    }
+    fn analyze(&self, conflict_clause: Clause) -> (Clause, usize) {
+        let mut learned_clause = conflict_clause.clone();
+        let mut seen: HashSet<usize> = HashSet::new();
+        let mut stack: Vec<Literal> = vec![];
+        let mut que: VecDeque<Literal> = VecDeque::new();
+        let mut backtrack_level = 0;
+
+        // to check the nodes levels, if it contains one literal in the current literal, finish
+        let mut diagnose_nodes: HashSet<usize> = HashSet::new();
+        // 初期スタックに矛盾節のリテラルを追加
+        for literal in &conflict_clause.literals {
+            stack.push(literal.clone());
+            que.push_front(literal.clone());
+            diagnose_nodes.insert(literal.variable);
+        }
+
+        // while let Some(literal) = stack.pop() {
+        while let Some(literal) = que.pop_back() {
+            if diagnose_nodes.len() == 1 {
+                backtrack_level = 0;
+                break;
+            }
+
+            {
+                let mut i = 0;
+                let mut second_highest = 0;
+                for lit_v in &diagnose_nodes {
+                    if let Some(node) = self.node(*lit_v) {
+                        if node.decision_level == self.desitions.len() {
+                            i += 1;
+                            if i > 1 {
+                                break;
+                            }
+                        } else {
+                            if node.decision_level > second_highest {
+                                second_highest = node.decision_level;
+                            }
+                        }
+                    }
+                }
+                if i == 1 {
+                    backtrack_level = second_highest;
+                    break;
+                }
+            }
+
+            if let Some(node) = self.node(literal.variable) {
+                if seen.contains(&literal.variable) {
+                    continue;
+                }
+                seen.insert(literal.variable);
+
+                if let Some(antecedent) = &node.antecedent {
+                    diagnose_nodes.remove(&node.variable);
+                    for ante_lit in &antecedent.literals {
+                        if !seen.contains(&ante_lit.variable) {
+                            // stack.push(ante_lit.clone());
+                            que.push_front(ante_lit.clone());
+                            diagnose_nodes.insert(ante_lit.variable);
+                        }
+                    }
+                } else {
+                    // これは決定変数であり、backtrack_levelを更新する
+                    // if node.decision_level > backtrack_level {
+                    //     backtrack_level = node.decision_level;
+                    // }
+                }
+            }
+        }
+
+        for lit_v in &diagnose_nodes {
+            if let Some(node) = self.node(*lit_v) {
+                learned_clause.literals.push(Literal {
+                    variable: *lit_v,
+                    nageted: !node.value,
+                });
+            }
+        }
+
+        // 学習節を生成
+        // let mut final_clause_literals = vec![];
+        // for lit in &learned_clause.literals {
+        //     if let Some(node) = self.node(lit.variable) {
+        //         if node.decision_level == backtrack_level {
+        //             final_clause_literals.push(lit.clone());
+        //         }
+        //     }
+        // }
+        // learned_clause.literals = final_clause_literals;
+
+        (learned_clause, backtrack_level)
+    }
+}
+
+fn propagete(x: &mut Vec<VarState>, cnf: &Vec<Clause>) -> bool {
     let mut done = false;
     while !done {
         done = true;
         for clause in cnf {
             let mut is: Vec<usize> = vec![];
-            let p = &clause[0];
-            let n = &clause[1];
 
-            for i in 0..p.len() {
-                if x[p[i]] != VarState::False {
-                    is.push(p[i]);
-                }
-            }
-            for i in 0..n.len() {
-                if x[n[i]] != VarState::True {
-                    is.push(n[i]);
+            for lit in &clause.literals {
+                let i = lit.variable;
+                if lit.nageted {
+                    if x[i] != VarState::True {
+                        is.push(i);
+                    }
+                } else {
+                    if x[i] != VarState::False {
+                        is.push(i);
+                    }
                 }
             }
 
@@ -34,10 +202,15 @@ fn propagete(x: &mut Vec<VarState>, cnf: &Vec<[Vec<usize>; 2]>) -> bool {
                 None => return false,
             };
             if is.len() == 0 && x[i] == VarState::None {
-                if p.contains(&i) {
-                    x[i] = VarState::True;
-                } else {
+                let t = match clause.literals.iter().find(|x| x.variable == i) {
+                    Some(t) => t,
+                    None => return false,
+                };
+
+                if t.nageted {
                     x[i] = VarState::False;
+                } else {
+                    x[i] = VarState::True;
                 }
                 done = false;
             }
@@ -46,32 +219,95 @@ fn propagete(x: &mut Vec<VarState>, cnf: &Vec<[Vec<usize>; 2]>) -> bool {
     true
 }
 
-fn consistent(x: &Vec<VarState>, cnf: &Vec<[Vec<usize>; 2]>) -> bool {
-    for clause in cnf {
-        let mut r = false;
-        for i in 0..clause[0].len() {
-            if x[clause[0][i]] != VarState::False {
-                r = true;
-                break;
-            }
-        }
-        if r {
-            continue;
-        }
-        for i in 0..clause[1].len() {
-            if x[clause[1][i]] != VarState::True {
-                r = true;
-                break;
-            }
-        }
-        if !r {
-            return false;
-        }
-    }
-    true
+enum Conflict {
+    Yes(Clause),
+    No,
 }
 
-fn search<'a>(x: &'a mut Vec<VarState>, cnf: &Vec<[Vec<usize>; 2]>) -> Option<&'a Vec<VarState>> {
+fn unit_propagete(
+    x: &mut Vec<VarState>,
+    cnf: &Vec<Clause>,
+    decision_level: usize,
+    i_graph: &mut ImplicationGraph,
+) -> Conflict {
+    let mut done = false;
+    while !done {
+        done = true;
+        for clause in cnf {
+            let mut is: Vec<usize> = vec![];
+
+            for lit in &clause.literals {
+                let i = lit.variable;
+                if lit.nageted {
+                    if x[i] != VarState::True {
+                        is.push(i);
+                    }
+                } else {
+                    if x[i] != VarState::False {
+                        is.push(i);
+                    }
+                }
+            }
+
+            let ii = match is.pop() {
+                Some(i) => i,
+                None => return Conflict::Yes(clause.clone()),
+            };
+            if is.len() == 0 && x[ii] == VarState::None {
+                let t_lit = match clause.literals.iter().find(|x| x.variable == ii) {
+                    Some(t) => t,
+                    //TODO
+                    None => return Conflict::No,
+                };
+
+                if t_lit.nageted {
+                    x[ii] = VarState::False;
+                } else {
+                    x[ii] = VarState::True;
+                }
+
+                // TODO: clause should be refferenced
+                i_graph.add_node(
+                    ii,
+                    x[ii] == VarState::True,
+                    decision_level,
+                    Some(clause.clone()),
+                );
+                done = false;
+            }
+        }
+    }
+    Conflict::No
+}
+
+fn solve(x: &mut Vec<VarState>, cnf: &mut Vec<Clause>) -> Option<bool> {
+    let mut desicion_level = 0_usize;
+    let mut i_grapgh = ImplicationGraph::new();
+    loop {
+        // no conflict
+        if let Conflict::Yes(conflict_clause) =
+            unit_propagete(x, cnf, desicion_level, &mut i_grapgh)
+        {
+            let (learned_clause, backtrack_level) = i_grapgh.analyze(conflict_clause);
+            if backtrack_level == 0 {
+                return Some(false);
+            }
+            cnf.push(learned_clause);
+            i_grapgh.backtrack(backtrack_level, x);
+            desicion_level = backtrack_level;
+        } else {
+            let i = match x.iter().position(|x| *x == VarState::None) {
+                Some(i) => i,
+                None => return Some(true),
+            };
+            desicion_level += 1;
+            x[i] = VarState::True;
+            i_grapgh.add_node(i, true, desicion_level, None);
+        }
+    }
+}
+
+fn search<'a>(x: &'a mut Vec<VarState>, cnf: &Vec<Clause>) -> Option<&'a Vec<VarState>> {
     if !propagete(x, cnf) {
         return None;
     }
@@ -92,11 +328,12 @@ fn search<'a>(x: &'a mut Vec<VarState>, cnf: &Vec<[Vec<usize>; 2]>) -> Option<&'
     search(x, cnf)
 }
 
-fn read_file(path: &str) -> std::result::Result<(Vec<[Vec<usize>; 2]>, usize), std::io::Error> {
+fn read_file(path: &str) -> std::result::Result<(Vec<Clause>, usize), std::io::Error> {
     use std::io::BufReader;
     let f = File::open(&path)?;
     let reader = BufReader::new(f);
-    let mut cnf: Vec<[Vec<usize>; 2]> = vec![];
+    // let mut cnf: Vec<[Vec<usize>; 2]> = vec![];
+    let mut cnf: Vec<Clause> = Vec::new();
     let mut n_v: usize = 0;
     for (i, line) in reader.lines().enumerate() {
         if i == 0 {
@@ -108,12 +345,20 @@ fn read_file(path: &str) -> std::result::Result<(Vec<[Vec<usize>; 2]>, usize), s
             .filter(|x| *x != "0")
             .map(|x: &str| -> i32 { x.parse().unwrap() })
             .collect();
-        let mut c: [Vec<usize>; 2] = [vec![], vec![]];
+        let mut c = Clause { literals: vec![] };
         for x in row {
             if x > 0 {
-                c[0].push((x - 1) as usize);
+                c.literals.push(Literal {
+                    variable: (x - 1) as usize,
+                    nageted: false,
+                });
+                //c[0].push((x - 1) as usize);
             } else {
-                c[1].push((-x - 1) as usize);
+                c.literals.push(Literal {
+                    variable: (-x - 1) as usize,
+                    nageted: true,
+                });
+                //c[1].push((-x - 1) as usize);
             }
         }
         cnf.push(c);
@@ -131,9 +376,33 @@ fn main() -> std::result::Result<(), std::io::Error> {
 
     let path = &args[1];
     let f_i = read_file(path)?;
-    let cnf = f_i.0;
+    let mut cnf = f_i.0;
     let mut x = vec![VarState::None; f_i.1];
 
+    let _r = match solve(&mut x, &mut cnf) {
+        Some(r) => {
+            println!("s SATISFIABLE");
+            print!("v ");
+            r
+        },
+        None => {
+            println!("s UNSATISFIABLE");
+            return Ok(());
+        }
+    };
+
+    for i in 0..x.len() {
+        if x[i] == VarState::True {
+            print!("{} ", i + 1);
+        } else {
+            print!("-{} ", i + 1);
+        }
+    }
+    print!("{}", 0);
+    // debug_assert!(false, "Stopping here for debugging");
+
+
+    /*
     let r = match search(&mut x, &cnf) {
         Some(r) => {
             println!("s SATISFIABLE");
@@ -153,6 +422,7 @@ fn main() -> std::result::Result<(), std::io::Error> {
         }
     }
     print!("{}", 0);
+    */
 
     Ok(())
 }
