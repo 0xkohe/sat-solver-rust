@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::BufRead;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::vec;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -29,8 +31,6 @@ struct Literal {
     nageted: bool,
 }
 
-use std::collections::HashMap;
-use std::collections::HashSet;
 struct ImplicationGraph {
     nodes: HashMap<usize, Node>,
     desitions: Vec<usize>,
@@ -301,7 +301,7 @@ fn solve(x: &mut Vec<VarState>, cnf: &mut Vec<Clause>) -> Option<bool> {
                 None => return Some(true),
             };
             desicion_level += 1;
-            x[i] = VarState::True;
+            x[i] = VarState::False;
             i_grapgh.add_node(i, true, desicion_level, None);
         }
     }
@@ -379,11 +379,15 @@ fn main() -> std::result::Result<(), std::io::Error> {
     let mut cnf = f_i.0;
     let mut x = vec![VarState::None; f_i.1];
 
-    let _r = match solve(&mut x, &mut cnf) {
+     match solve(&mut x, &mut cnf) {
         Some(r) => {
-            println!("s SATISFIABLE");
-            print!("v ");
-            r
+            if r {
+                println!("s SATISFIABLE");
+                print!("v ");
+            } else {
+                println!("s UNSATISFIABLE");
+                return Ok(());
+            }
         },
         None => {
             println!("s UNSATISFIABLE");
