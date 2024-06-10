@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::BufRead;
+use std::result::Result;
 use std::vec;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -69,7 +70,7 @@ impl ImplicationGraph {
         self.nodes.get(&variable)
     }
 
-    // TODO x should be propaty of the struct
+    // TODO x should be a propaty of the struct?
     fn backtrack(&mut self, decision_level: usize, x: &mut Vec<VarState>) {
         let mut to_remove = vec![];
         for (variable, node) in &self.nodes {
@@ -83,22 +84,20 @@ impl ImplicationGraph {
         }
         self.desitions.truncate(decision_level);
     }
-    fn analyze(&self, conflict_clause: Clause) -> (Clause, usize) {
+    fn analyze(&self, conflict_clause: Clause) -> Result<(Clause, usize), std::io::Error> {
         let mut learned_clause = conflict_clause.clone();
         let mut seen: HashSet<usize> = HashSet::new();
         // for BFS
         let mut que: VecDeque<Literal> = VecDeque::new();
         let mut backtrack_level = 0;
 
-        // to check the nodes levels, if it contains one literal in the current literal, finish
-        // let mut diagnose_nodes: HashSet<usize> = HashSet::new();
         // 初期スタックに矛盾節のリテラルを追加
         for literal in &conflict_clause.literals {
             que.push_front(literal.clone());
         }
 
-        // while let Some(literal) = que.pop_back() {
         loop {
+            // to check the nodes levels, if it contains one literal in the current literal, finish
             if que.len() == 1 {
                 backtrack_level = 0;
                 break;
@@ -142,12 +141,16 @@ impl ImplicationGraph {
                         }
                     }
                 } else {
-                    // make error
-                    break;
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "node not found",
+                    ));
                 }
             } else {
-                // make error
-                break;
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "queue is empty",
+                ));
             }
         }
 
@@ -160,7 +163,7 @@ impl ImplicationGraph {
             }
         }
 
-        (learned_clause, backtrack_level)
+        Ok((learned_clause, backtrack_level))
     }
 }
 
@@ -276,7 +279,10 @@ fn solve(x: &mut Vec<VarState>, cnf: &mut Vec<Clause>) -> Option<bool> {
         if let Conflict::Yes(conflict_clause) =
             unit_propagete(x, cnf, desicion_level, &mut i_grapgh)
         {
-            let (learned_clause, backtrack_level) = i_grapgh.analyze(conflict_clause);
+            let (learned_clause, backtrack_level) = match i_grapgh.analyze(conflict_clause) {
+                Ok((learned_clause, backtrack_level)) => (learned_clause, backtrack_level),
+                Err(_) => return None,
+            };
             if backtrack_level == 0 {
                 return Some(false);
             }
@@ -317,7 +323,7 @@ fn search<'a>(x: &'a mut Vec<VarState>, cnf: &Vec<Clause>) -> Option<&'a Vec<Var
     search(x, cnf)
 }
 
-fn read_file(path: &str) -> std::result::Result<(Vec<Clause>, usize), std::io::Error> {
+fn read_file(path: &str) -> Result<(Vec<Clause>, usize), std::io::Error> {
     use std::io::BufReader;
     let f = File::open(&path)?;
     let reader = BufReader::new(f);
@@ -354,7 +360,7 @@ fn read_file(path: &str) -> std::result::Result<(Vec<Clause>, usize), std::io::E
     Ok((cnf, n_v))
 }
 
-fn main() -> std::result::Result<(), std::io::Error> {
+fn main() -> Result<(), std::io::Error> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <cnf file>", args[0]);
