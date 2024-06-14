@@ -116,12 +116,12 @@ impl Clause {
         let watch2_sat = watch2_lit.is_satisfied(&x[watch2_lit.variable]);
 
         match (watch1_sat, watch2_sat) {
-            (None, None) => return TwoWatchResult::Unresolved,
-            (Some(true), _) | (_, Some(true)) => return TwoWatchResult::Satisfied,
-            (Some(false), None) => return TwoWatchResult::UnitPropagation(watch2_lit.variable),
-            (None, Some(false)) => return TwoWatchResult::UnitPropagation(watch1_lit.variable),
-            (Some(false), Some(false)) => return TwoWatchResult::Conflict,
-        };
+            (None, None) => TwoWatchResult::Unresolved,
+            (Some(true), _) | (_, Some(true)) => TwoWatchResult::Satisfied,
+            (Some(false), None) => TwoWatchResult::UnitPropagation(watch2_lit.variable),
+            (None, Some(false)) => TwoWatchResult::UnitPropagation(watch1_lit.variable),
+            (Some(false), Some(false)) => TwoWatchResult::Conflict,
+        }
     }
 }
 
@@ -284,48 +284,6 @@ impl ImplicationGraph {
     }
 }
 
-#[allow(dead_code)]
-fn propagete(x: &mut Vec<VarState>, cnf: &Vec<Clause>) -> bool {
-    let mut done = false;
-    while !done {
-        done = true;
-        for clause in cnf {
-            let mut is: Vec<usize> = vec![];
-
-            for lit in &clause.literals {
-                let i = lit.variable;
-                if lit.nagated {
-                    if x[i] != VarState::True {
-                        is.push(i);
-                    }
-                } else {
-                    if x[i] != VarState::False {
-                        is.push(i);
-                    }
-                }
-            }
-
-            let i = match is.pop() {
-                Some(i) => i,
-                None => return false,
-            };
-            if is.len() == 0 && x[i] == VarState::None {
-                let t = match clause.literals.iter().find(|x| x.variable == i) {
-                    Some(t) => t,
-                    None => return false,
-                };
-
-                if t.nagated {
-                    x[i] = VarState::False;
-                } else {
-                    x[i] = VarState::True;
-                }
-                done = false;
-            }
-        }
-    }
-    true
-}
 
 enum Conflict {
     Yes(Clause),
@@ -363,59 +321,14 @@ fn unit_propagete(
                 x[ii] = VarState::True;
             }
 
-            // TODO: clause should be refferenced
             i_graph.add_node(
                 ii,
-                x[ii] == VarState::True,
+                x[ii] == VarState::False,
                 decision_level,
                 Some(clause.clone()),
             );
             done = false;
 
-            /*
-            let mut is: Vec<usize> = vec![];
-
-            for lit in &clause.literals {
-                let i = lit.variable;
-                if lit.nagated {
-                    if x[i] != VarState::True {
-                        is.push(i);
-                    }
-                } else {
-                    if x[i] != VarState::False {
-                        is.push(i);
-                    }
-                }
-            }
-
-            let ii = match is.pop() {
-                Some(i) => i,
-                None => return Conflict::Yes(clause.clone()),
-            };
-
-
-            if is.len() == 0 && x[ii] == VarState::None {
-                let t_lit = match clause.literals.iter().find(|x| x.variable == ii) {
-                    Some(t) => t,
-                    //TODO
-                    None => return Conflict::No,
-                };
-
-                if t_lit.nagated {
-                    x[ii] = VarState::False;
-                } else {
-                    x[ii] = VarState::True;
-                }
-                // TODO: clause should be refferenced
-                i_graph.add_node(
-                    ii,
-                    x[ii] == VarState::True,
-                    decision_level,
-                    Some(clause.clone()),
-                );
-                done = false;
-            }
-            */
         }
     }
     Conflict::No
@@ -456,28 +369,6 @@ fn solve(x: &mut Vec<VarState>, cnf: &mut Vec<Clause>) -> Option<bool> {
             i_grapgh.add_node(i, true, desicion_level, None);
         }
     }
-}
-
-#[allow(dead_code)]
-fn search<'a>(x: &'a mut Vec<VarState>, cnf: &Vec<Clause>) -> Option<&'a Vec<VarState>> {
-    if !propagete(x, cnf) {
-        return None;
-    }
-    let i = match x.iter().position(|x| *x == VarState::None) {
-        Some(i) => i,
-        None => return Some(x),
-    };
-    let mut y = x.clone();
-    y[i] = VarState::True;
-    match search(&mut y, cnf) {
-        Some(z) => {
-            *x = z.clone();
-            return Some(x);
-        }
-        None => (),
-    }
-    x[i] = VarState::False;
-    search(x, cnf)
 }
 
 fn read_file(path: &str) -> Result<(Vec<Clause>, usize), std::io::Error> {
