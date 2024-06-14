@@ -14,16 +14,6 @@ enum VarState {
     None,
 }
 
-impl fmt::Display for VarState {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            VarState::True => write!(f, "True"),
-            VarState::False => write!(f, "False"),
-            VarState::None => write!(f, "None"),
-        }
-    }
-}
-
 #[derive(Debug)]
 struct Node {
     variable: usize,
@@ -46,6 +36,12 @@ enum TwoWatchResult {
 }
 
 impl Clause {
+    fn new() -> Self {
+        Clause {
+            literals: vec![],
+            watch_index: [0, 1],
+        }
+    }
     fn watch_two_literal(&mut self, x: &[VarState]) -> TwoWatchResult {
         if self.literals.len() == 1 {
             match &x[self.literals[0].variable] {
@@ -120,49 +116,6 @@ impl Clause {
         let watch1_sat = watch1_lit.is_satisfied(&x[watch1_lit.variable]);
         let watch2_sat = watch2_lit.is_satisfied(&x[watch2_lit.variable]);
 
-        /*
-        println!("kkk: {:?} {:?}", watch1_sat, watch2_sat);
-        println!("kkk: {:?} {:?}", watch1_lit, watch2_lit);
-        println!(
-            "kkk: {:?} {:?}",
-            x[watch1_lit.variable], x[watch2_lit.variable]
-        );
-        println!("kkk: {:?} ", self.watch_index);
-        println!("kkk: {:?} ", self.literals);
-        */
-
-        /*
-        if watch1_sat == Some(false) && watch2_sat == Some(false) {
-            for i in 0..self.literals.len() {
-                print!(
-                    "{}:{} ",
-                    self.literals[i].variable, x[self.literals[i].variable]
-                );
-            }
-        }
-        */
-
-        /*
-        match (watch1_sat, watch2_sat) {
-            (Some(false), Some(false)) => println!(
-                "v:{}, n:{}, v:{}, n:{}, {}, {}",
-                watch1_lit.variable,
-                watch1_lit.nagated,
-                watch2_lit.variable,
-                watch2_lit.nagated,
-                x[watch1_lit.variable],
-                x[watch2_lit.variable]
-            ),
-            _ => (),
-        };
-        */
-        /*
-        match (watch1_sat, watch2_sat) {
-            (None, None) => println!("nashi1"),
-            (Some(true), _) | (_, Some(true)) => println!("nashi2"),
-            _ => (),
-        };
-        */
         match (watch1_sat, watch2_sat) {
             (None, None) => return TwoWatchResult::Unresolved,
             (Some(true), _) | (_, Some(true)) => return TwoWatchResult::Satisfied,
@@ -231,7 +184,6 @@ impl ImplicationGraph {
         self.nodes.get(&variable)
     }
 
-    // TODO x should be a propaty of the struct?
     fn backtrack(&mut self, decision_level: usize, x: &mut Vec<VarState>) {
         let mut to_remove = vec![];
         for (variable, node) in &self.nodes {
@@ -255,16 +207,12 @@ impl ImplicationGraph {
         let mut que: VecDeque<Literal> = VecDeque::new();
         let backtrack_level: usize;
 
-        // 初期スタックに矛盾節のリテラルを追加
         for literal in &conflict_clause.literals {
             que.push_front(literal.clone());
         }
-        // println!("kohe");
 
         loop {
             // to check the nodes levels, if it contains one literal in the current literal, finish
-            //println!("seen: {:?}", seen);
-            //println!("que: {:?}", que);
 
             if que.len() == 1 {
                 backtrack_level = 0;
@@ -276,8 +224,6 @@ impl ImplicationGraph {
                 let mut second_highest = 0;
                 for lit_v in &que {
                     if let Some(node) = self.node(lit_v.variable) {
-                        // println!("dl: {:?}",node.decision_level);
-                        // println!("self.dl: {:?}",self.desitions.len());
                         // if node.decision_level == self.desitions.len() {
                         if node.decision_level == dl {
                             i += 1;
@@ -291,7 +237,6 @@ impl ImplicationGraph {
                         }
                     }
                 }
-                // println!("i: {:?}", i);
                 // check if it contains only one literal in the current decision level
                 if i == 1 {
                     backtrack_level = second_highest;
@@ -326,10 +271,7 @@ impl ImplicationGraph {
             }
         }
 
-        let mut learned_clause = Clause {
-            literals: vec![],
-            watch_index: [0, 1],
-        };
+        let mut learned_clause = Clause::new();
         for lit_v in &que {
             if let Some(node) = self.node(lit_v.variable) {
                 learned_clause.literals.push(Literal {
@@ -339,9 +281,6 @@ impl ImplicationGraph {
             }
         }
 
-        // println!("====LEARN===");
-        // println!("learned: {:?}", learned_clause);
-        // println!("backtrak_level: {:?}", backtrack_level);
         Ok((learned_clause, backtrack_level))
     }
 }
@@ -404,18 +343,8 @@ fn unit_propagete(
     while !done {
         done = true;
         for clause in &mut *cnf {
-            /*
-                 match clause.watch_two_literal(x) {
-                    TwoWatchResult::Conflict => print!("conflict\n"),
-                    //TwoWatchResult::UnitPropagation(_) => print!("unit propagation\n"),
-                    // TwoWatchResult::Satisfied => print!("satisfied\n"),
-                    // TwoWatchResult::Unresolved => print!("unresolved\n"),
-                    _ => (),
-                };
-            */
             let ii = match clause.watch_two_literal(x) {
                 TwoWatchResult::Conflict => {
-                    // print!("conflict\n");
                     return Conflict::Yes(clause.clone());
                 }
                 TwoWatchResult::UnitPropagation(i) => i,
@@ -501,11 +430,6 @@ fn solve(x: &mut Vec<VarState>, cnf: &mut Vec<Clause>) -> Option<bool> {
         if let Conflict::Yes(conflict_clause) =
             unit_propagete(x, cnf, desicion_level, &mut i_grapgh)
         {
-            //println!("1 {:?}", conflict_clause);
-            //println!("decition_lv  {:?}", desicion_level);
-            //println!("{:?}", x);
-            //println!("{:#?}",i_grapgh);
-            //println!("kohe1");
             if desicion_level == 0 {
                 return Some(false);
             }
@@ -517,7 +441,6 @@ fn solve(x: &mut Vec<VarState>, cnf: &mut Vec<Clause>) -> Option<bool> {
                         return None;
                     }
                 };
-            // print!("learned {:?}", learned_clause.literals);
             cnf.push(learned_clause);
             i_grapgh.backtrack(backtrack_level, x);
             if backtrack_level == 0 {
@@ -526,13 +449,12 @@ fn solve(x: &mut Vec<VarState>, cnf: &mut Vec<Clause>) -> Option<bool> {
                 desicion_level = backtrack_level - 1;
             }
         } else {
-            //println!("kohe2");
             let i = match x.iter().position(|x| *x == VarState::None) {
                 Some(i) => i,
                 None => return Some(true),
             };
             desicion_level += 1;
-            x[i] = VarState::False;
+            x[i] = VarState::True;
             i_grapgh.add_node(i, true, desicion_level, None);
         }
     }
@@ -576,10 +498,7 @@ fn read_file(path: &str) -> Result<(Vec<Clause>, usize), std::io::Error> {
             .filter(|x| *x != "0")
             .map(|x: &str| -> i32 { x.parse().unwrap() })
             .collect();
-        let mut c = Clause {
-            literals: vec![],
-            watch_index: [0, 1],
-        };
+        let mut c = Clause::new();
         for x in row {
             if x > 0 {
                 c.literals.push(Literal {
