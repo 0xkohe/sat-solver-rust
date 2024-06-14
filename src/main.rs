@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::fmt;
 use std::fs::File;
 use std::io::BufRead;
 use std::result::Result;
@@ -407,7 +406,6 @@ fn unit_propagete(
                 } else {
                     x[ii] = VarState::True;
                 }
-
                 // TODO: clause should be refferenced
                 i_graph.add_node(
                     ii,
